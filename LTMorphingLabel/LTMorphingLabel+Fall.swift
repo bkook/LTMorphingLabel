@@ -3,7 +3,7 @@
 //  https://github.com/lexrus/LTMorphingLabel
 //
 //  The MIT License (MIT)
-//  Copyright (c) 2016 Lex Tang, http://lexrus.com
+//  Copyright (c) 2017 Lex Tang, http://lexrus.com
 //
 //  Permission is hereby granted, free of charge, to any person obtaining a
 //  copy of this software and associated documentation files
@@ -27,9 +27,9 @@
 
 import UIKit
 
-
 extension LTMorphingLabel {
-    
+
+    @objc
     func FallLoad() {
         
         progressClosures["Fall\(LTMorphingPhases.progress)"] = {
@@ -81,7 +81,6 @@ extension LTMorphingLabel {
             )
         }
         
-        
         drawingClosures["Fall\(LTMorphingPhases.draw)"] = {
             limbo in
             
@@ -91,7 +90,7 @@ extension LTMorphingLabel {
                 context!.saveGState()
                 let charCenterX = charRect.origin.x + (charRect.size.width / 2.0)
                 var charBottomY = charRect.origin.y + charRect.size.height - self.font.pointSize / 6
-                var charColor = self.textColor
+                var charColor: UIColor = self.textColor
                 
                 // Fall down if drawingProgress is more than 50%
                 if limbo.drawingProgress > 0.5 {
@@ -103,7 +102,7 @@ extension LTMorphingLabel {
                             0.5
                         )
                     )
-                    charBottomY = charBottomY + ease * 10.0
+                    charBottomY += ease * 10.0
                     let fadeOutAlpha = min(
                         1.0,
                         max(
@@ -132,12 +131,13 @@ extension LTMorphingLabel {
                         1.0
                     ) * angle
                 )
-                context!.rotate(by: rotation * CGFloat(M_PI) / 180.0)
+                context!.rotate(by: rotation * CGFloat(Double.pi) / 180.0)
                 let s = String(limbo.char)
-                s.draw(in: charRect, withAttributes: [
-                    NSFontAttributeName: self.font.withSize(limbo.size),
-                    NSForegroundColorAttributeName: charColor
-                    ])
+                let attributes: [NSAttributedStringKey: Any] = [
+                    .font: self.font.withSize(limbo.size),
+                    .foregroundColor: charColor
+                ]
+                s.draw(in: charRect, withAttributes: attributes)
                 context!.restoreGState()
                 
                 return true

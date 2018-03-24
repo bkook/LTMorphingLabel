@@ -3,7 +3,7 @@
 //  https://github.com/lexrus/LTMorphingLabel
 //
 //  The MIT License (MIT)
-//  Copyright (c) 2016 Lex Tang, http://lexrus.com
+//  Copyright (c) 2017 Lex Tang, http://lexrus.com
 //
 //  Permission is hereby granted, free of charge, to any person obtaining a
 //  copy of this software and associated documentation files
@@ -28,7 +28,8 @@
 import Foundation
 import UIKit
 import QuartzCore
-fileprivate func < <T : Comparable>(lhs: T?, rhs: T?) -> Bool {
+
+private func < <T : Comparable>(lhs: T?, rhs: T?) -> Bool {
   switch (lhs, rhs) {
   case let (l?, r?):
     return l < r
@@ -39,7 +40,7 @@ fileprivate func < <T : Comparable>(lhs: T?, rhs: T?) -> Bool {
   }
 }
 
-fileprivate func >= <T : Comparable>(lhs: T?, rhs: T?) -> Bool {
+private func >= <T : Comparable>(lhs: T?, rhs: T?) -> Bool {
   switch (lhs, rhs) {
   case let (l?, r?):
     return l >= r
@@ -48,15 +49,12 @@ fileprivate func >= <T : Comparable>(lhs: T?, rhs: T?) -> Bool {
   }
 }
 
-
-
 enum LTMorphingPhases: Int {
     case start, appear, disappear, draw, progress, skipFrames
 }
 
-
 typealias LTMorphingStartClosure =
-    (Void) -> Void
+    () -> Void
 
 typealias LTMorphingEffectClosure =
     (Character, _ index: Int, _ progress: Float) -> LTCharacterLimbo
@@ -68,15 +66,13 @@ typealias LTMorphingManipulateProgressClosure =
     (_ index: Int, _ progress: Float, _ isNewChar: Bool) -> Float
 
 typealias LTMorphingSkipFramesClosure =
-    (Void) -> Int
-
+    () -> Int
 
 @objc public protocol LTMorphingLabelDelegate {
     @objc optional func morphingDidStart(_ label: LTMorphingLabel)
     @objc optional func morphingDidComplete(_ label: LTMorphingLabel)
     @objc optional func morphingOnProgress(_ label: LTMorphingLabel, progress: Float)
 }
-
 
 // MARK: - LTMorphingLabel
 @IBDesignable open class LTMorphingLabel: UILabel {
@@ -115,7 +111,7 @@ typealias LTMorphingSkipFramesClosure =
     
     override open var font: UIFont! {
         get {
-            return super.font
+            return super.font ?? UIFont.systemFont(ofSize: 15)
         }
         set {
             super.font = newValue
@@ -123,9 +119,9 @@ typealias LTMorphingSkipFramesClosure =
         }
     }
     
-    override open var text: String! {
+    override open var text: String? {
         get {
-            return super.text
+            return super.text ?? ""
         }
         set {
             guard text != newValue else { return }
@@ -159,6 +155,12 @@ typealias LTMorphingSkipFramesClosure =
         }
     }
     
+    open var textAttributes: [NSAttributedStringKey: Any]? {
+        didSet {
+            setNeedsLayout()
+        }
+    }
+    
     open override func setNeedsLayout() {
         super.setNeedsLayout()
         previousRects = rectsOfEachCharacter(previousText, withFont: font)
@@ -188,12 +190,16 @@ typealias LTMorphingSkipFramesClosure =
     fileprivate lazy var displayLink: CADisplayLink = {
         let displayLink = CADisplayLink(
             target: self,
-            selector: #selector(LTMorphingLabel.displayFrameTick))
-        displayLink.add(
-            to: RunLoop.current,
-            forMode: RunLoopMode.commonModes)
+            selector: #selector(LTMorphingLabel.displayFrameTick)
+        )
+        displayLink.add(to: .current, forMode: .commonModes)
         return displayLink
         }()
+
+    deinit {
+        displayLink.remove(from: .current, forMode: .commonModes)
+        displayLink.invalidate()
+    }
     
     lazy var emitterView: LTEmitterView = {
         let emitterView = LTEmitterView(frame: self.bounds)
@@ -205,12 +211,25 @@ typealias LTMorphingSkipFramesClosure =
 // MARK: - Animation extension
 extension LTMorphingLabel {
 
-    func displayFrameTick() {
+    @objc func displayFrameTick() {
         if displayLink.duration > 0.0 && totalFrames == 0 {
-            let frameRate = Float(displayLink.duration) / Float(displayLink.frameInterval)
+            var frameRate = Float(0)
+            if #available(iOS 10.0, tvOS 10.0, *) {
+                var frameInterval = 1
+                if displayLink.preferredFramesPerSecond == 60 {
+                    frameInterval = 1
+                } else if displayLink.preferredFramesPerSecond == 30 {
+                    frameInterval = 2
+                } else {
+                    frameInterval = 1
+                }
+                frameRate = Float(displayLink.duration) / Float(frameInterval)
+            } else {
+                frameRate = Float(displayLink.duration) / Float(displayLink.frameInterval)
+            }
             totalFrames = Int(ceil(morphingDuration / frameRate))
 
-            let totalDelay = Float((text!).characters.count) * morphingCharacterDelay
+            let totalDelay = Float((text!).count) * morphingCharacterDelay
             totalDelayFrames = Int(ceil(totalDelay / frameRate))
         }
 
@@ -246,12 +265,12 @@ extension LTMorphingLabel {
         var charRects = [CGRect]()
         var leftOffset: CGFloat = 0.0
         
-        charHeight = "Leg".size(attributes: [NSFontAttributeName: font]).height
+        charHeight = "Leg".size(withAttributes: [.font: font]).height
         
         let topOffset = (bounds.size.height - charHeight) / 2.0
-        
-        for (_, char) in textToDraw.characters.enumerated() {
-            let charSize = String(char).size(attributes: [NSFontAttributeName: font])
+
+        for char in textToDraw {
+            let charSize = String(char).size(withAttributes: [.font: font])
             charRects.append(
                 CGRect(
                     origin: CGPoint(
@@ -386,7 +405,7 @@ extension LTMorphingLabel {
         var limbo = [LTCharacterLimbo]()
         
         // Iterate original characters
-        for (i, character) in previousText.characters.enumerated() {
+        for (i, character) in previousText.enumerated() {
             var progress: Float = 0.0
             
             if let closure = progressClosures[
@@ -402,7 +421,7 @@ extension LTMorphingLabel {
         }
         
         // Add new characters
-        for (i, character) in (text!).characters.enumerated() {
+        for (i, character) in (text!).enumerated() {
             if i >= diffResults?.0.count {
                 break
             }
@@ -442,7 +461,6 @@ extension LTMorphingLabel {
 
 }
 
-
 // MARK: - Drawing extension
 extension LTMorphingLabel {
     
@@ -477,15 +495,22 @@ extension LTMorphingLabel {
                 }
                 return false
                 }(charLimbo)
-            
+
             if !willAvoidDefaultDrawing {
+                var attrs: [NSAttributedStringKey: Any] = [
+                    .foregroundColor: textColor.withAlphaComponent(charLimbo.alpha)
+                ]
+
+                if let font = UIFont(name: font.fontName, size: charLimbo.size) {
+                    attrs[.font] = font
+                }
+                
+                for (key, value) in textAttributes ?? [:] {
+                    attrs[key] = value
+                }
+                
                 let s = String(charLimbo.char)
-                s.draw(in: charRect, withAttributes: [
-                    NSFontAttributeName:
-                        UIFont.init(name: font.fontName, size: charLimbo.size)!,
-                    NSForegroundColorAttributeName:
-                        textColor.withAlphaComponent(charLimbo.alpha)
-                    ])
+                s.draw(in: charRect, withAttributes: attrs)
             }
         }
     }
